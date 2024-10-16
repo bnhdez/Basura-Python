@@ -6,7 +6,7 @@ import numpy as np
 modelo = tf.keras.models.load_model('modelo_trashnet.h5')
 
 # Cargar una nueva imagen para hacer predicciones
-ruta_imagen = './prueba2.jpg'  # Cambia esto por la ruta de tu imagen
+ruta_imagen = './prueba.jpg'  # Cambia esto por la ruta de tu imagen
 TAMANO_IMG = 100  # Tamaño de imagen al que el modelo fue entrenado
 
 # Preprocesar la imagen

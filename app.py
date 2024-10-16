@@ -3,15 +3,17 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
 
 # Definir parámetros
 TAMANO_IMG = 100  # Tamaño de las imágenes
 BATCH_SIZE = 32   # Tamaño del lote para entrenamiento
 EPOCHS = 30       # Número de épocas de entrenamiento
 
-# Directorio del dataset
-DIRECTORIO_DATASET = './dataset-original'
+# Directorios de los datasets
+DIRECTORIO_TRASHNET = './dataset-original'
+DIRECTORIO_GARBAGE = './Garbage classification'
+DIRECTORIO_TACO = './TACO'
 
 # Configurar generadores de datos
 datagen = ImageDataGenerator(
@@ -19,28 +21,77 @@ datagen = ImageDataGenerator(
     validation_split=0.15   # Separar 15% para validación
 )
 
-try:
-    assert os.path.exists(DIRECTORIO_DATASET)
-    print(f"La carpeta '{DIRECTORIO_DATASET}' existe y es accesible.")
-except AssertionError:
-    print(f"Error: No se encontró la carpeta '{DIRECTORIO_DATASET}'")
+# Convertir DirectoryIterator a tf.data.Dataset
+def convertir_a_dataset(directory_iterator):
+    def generator():
+        for batch in directory_iterator:
+            yield batch[0], batch[1]  # X (imágenes) e Y (etiquetas)
+    return tf.data.Dataset.from_generator(generator, output_signature=(
+        tf.TensorSpec(shape=(None, TAMANO_IMG, TAMANO_IMG, 3), dtype=tf.float32),
+        tf.TensorSpec(shape=(None, 6), dtype=tf.float32)))
 
-# Cargar datos de entrenamiento y validación
-entrenamiento = datagen.flow_from_directory(
-    DIRECTORIO_DATASET,
+# Cargar datos de entrenamiento y validación para cada dataset
+entrenamiento_trashnet = datagen.flow_from_directory(
+    DIRECTORIO_TRASHNET,
     target_size=(TAMANO_IMG, TAMANO_IMG),
     batch_size=BATCH_SIZE,
     class_mode='categorical',
     subset='training'
 )
 
-validacion = datagen.flow_from_directory(
-    DIRECTORIO_DATASET,
+validacion_trashnet = datagen.flow_from_directory(
+    DIRECTORIO_TRASHNET,
     target_size=(TAMANO_IMG, TAMANO_IMG),
     batch_size=BATCH_SIZE,
     class_mode='categorical',
     subset='validation'
 )
+
+entrenamiento_garbage = datagen.flow_from_directory(
+    DIRECTORIO_GARBAGE,
+    target_size=(TAMANO_IMG, TAMANO_IMG),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='training'
+)
+
+validacion_garbage = datagen.flow_from_directory(
+    DIRECTORIO_GARBAGE,
+    target_size=(TAMANO_IMG, TAMANO_IMG),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='validation'
+)
+
+entrenamiento_taco = datagen.flow_from_directory(
+    DIRECTORIO_TACO,
+    target_size=(TAMANO_IMG, TAMANO_IMG),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='training'
+)
+
+validacion_taco = datagen.flow_from_directory(
+    DIRECTORIO_TACO,
+    target_size=(TAMANO_IMG, TAMANO_IMG),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='validation'
+)
+
+# Convertir cada DirectoryIterator a tf.data.Dataset
+ds_entrenamiento_trashnet = convertir_a_dataset(entrenamiento_trashnet)
+ds_validacion_trashnet = convertir_a_dataset(validacion_trashnet)
+
+ds_entrenamiento_garbage = convertir_a_dataset(entrenamiento_garbage)
+ds_validacion_garbage = convertir_a_dataset(validacion_garbage)
+
+ds_entrenamiento_taco = convertir_a_dataset(entrenamiento_taco)
+ds_validacion_taco = convertir_a_dataset(validacion_taco)
+
+# Combinar los datasets
+entrenamiento_combined = ds_entrenamiento_trashnet.concatenate(ds_entrenamiento_garbage).concatenate(ds_entrenamiento_taco)
+validacion_combined = ds_validacion_trashnet.concatenate(ds_validacion_garbage).concatenate(ds_validacion_taco)
 
 # Definir el modelo CNN
 modeloCNN = tf.keras.models.Sequential([
@@ -61,24 +112,23 @@ modeloCNN.compile(optimizer='adam',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
-# Definir callback para TensorBoard
+# Callbacks: Guardar el modelo y parar si no mejora
 tensorboard = TensorBoard(log_dir='logs/cnn_trashnet')
+early_stopping = EarlyStopping(monitor='val_loss', patience=5)
+checkpointer = ModelCheckpoint(filepath='modelo_trashnet.h5', save_best_only=True, monitor='val_loss')
 
-# Entrenar el modelo
+# Entrenar el modelo con los datasets combinados
 historial = modeloCNN.fit(
-    entrenamiento,
-    validation_data=validacion,
+    entrenamiento_combined,
+    validation_data=validacion_combined,
     epochs=EPOCHS,
-    callbacks=[tensorboard],
-    steps_per_epoch=len(entrenamiento),
-    validation_steps=len(validacion)
+    callbacks=[tensorboard, early_stopping, checkpointer],
+    steps_per_epoch=len(entrenamiento_trashnet),
+    validation_steps=len(validacion_trashnet)
 )
 
-# Guardar el modelo
-modeloCNN.save('modelo_trashnet.h5')
-
 # Evaluar el modelo
-resultado = modeloCNN.evaluate(validacion)
+resultado = modeloCNN.evaluate(validacion_combined)
 print(f"Precisión del modelo: {resultado[1] * 100:.2f}%")
 
 # Visualizar curvas de precisión y pérdida
