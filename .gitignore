@@ -1,3 +1,6 @@
 dataset-original/
 Garbage classification/
 TACO/
+env/
+logs/
+.env
