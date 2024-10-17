@@ -3,11 +3,11 @@ from tensorflow.keras.preprocessing import image
 import numpy as np
 
 # Cargar el modelo guardado
-modelo = tf.keras.models.load_model('modelo_trashnet.h5')
+modelo = tf.keras.models.load_model('modelo_mejorado.h5')
 
 # Cargar una nueva imagen para hacer predicciones
-ruta_imagen = './prueba.jpg'  # Cambia esto por la ruta de tu imagen
-TAMANO_IMG = 100  # Tamaño de imagen al que el modelo fue entrenado
+ruta_imagen = './prueba2.jpg'  # Cambia esto por la ruta de tu imagen
+TAMANO_IMG = 224  # Tamaño de imagen al que el modelo fue entrenado
 
 # Preprocesar la imagen
 img = image.load_img(ruta_imagen, target_size=(TAMANO_IMG, TAMANO_IMG))

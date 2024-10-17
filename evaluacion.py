@@ -5,7 +5,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 # Definir parámetros
-TAMANO_IMG = 100  # Tamaño de las imágenes
+TAMANO_IMG = 224  # Tamaño de las imágenes ajustado para coincidir con el modelo
 BATCH_SIZE = 32   # Tamaño del lote para entrenamiento
 
 # Directorios de los datasets
@@ -19,10 +19,10 @@ datagen = ImageDataGenerator(
     validation_split=0.15   # Separar 15% para validación
 )
 
-# Cargar datos de validación para cada dataset
+# Cargar datos de validación para cada dataset con el tamaño correcto
 validacion_trashnet = datagen.flow_from_directory(
     DIRECTORIO_TRASHNET,
-    target_size=(TAMANO_IMG, TAMANO_IMG),
+    target_size=(TAMANO_IMG, TAMANO_IMG),  # Tamaño ajustado
     batch_size=BATCH_SIZE,
     class_mode='categorical',
     subset='validation'
@@ -30,7 +30,7 @@ validacion_trashnet = datagen.flow_from_directory(
 
 validacion_garbage = datagen.flow_from_directory(
     DIRECTORIO_GARBAGE,
-    target_size=(TAMANO_IMG, TAMANO_IMG),
+    target_size=(TAMANO_IMG, TAMANO_IMG),  # Tamaño ajustado
     batch_size=BATCH_SIZE,
     class_mode='categorical',
     subset='validation'
@@ -38,7 +38,7 @@ validacion_garbage = datagen.flow_from_directory(
 
 validacion_taco = datagen.flow_from_directory(
     DIRECTORIO_TACO,
-    target_size=(TAMANO_IMG, TAMANO_IMG),
+    target_size=(TAMANO_IMG, TAMANO_IMG),  # Tamaño ajustado
     batch_size=BATCH_SIZE,
     class_mode='categorical',
     subset='validation'
@@ -62,7 +62,7 @@ ds_validacion_taco = convertir_a_dataset(validacion_taco)
 validacion_combined = ds_validacion_trashnet.concatenate(ds_validacion_garbage).concatenate(ds_validacion_taco)
 
 # Cargar el modelo guardado
-modelo_guardado = load_model('modelo_trashnet.h5')
+modelo_guardado = load_model('modelo_mejorado.h5')
 
 # Evaluar el modelo en el conjunto de validación combinado
 resultado = modelo_guardado.evaluate(validacion_combined)

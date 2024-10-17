@@ -4,24 +4,34 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout
+from tensorflow.keras.models import Model
 
 # Definir parámetros
-TAMANO_IMG = 100  # Tamaño de las imágenes
+TAMANO_IMG = 224  # Tamaño de las imágenes ajustado para ResNet50
 BATCH_SIZE = 32   # Tamaño del lote para entrenamiento
-EPOCHS = 30       # Número de épocas de entrenamiento
+EPOCHS = 50       # Número de épocas máximo de entrenamiento
 
 # Directorios de los datasets
 DIRECTORIO_TRASHNET = './dataset-original'
 DIRECTORIO_GARBAGE = './Garbage classification'
 DIRECTORIO_TACO = './TACO'
 
-# Configurar generadores de datos
+# Configurar generadores de datos con aumentación
 datagen = ImageDataGenerator(
-    rescale=1./255,        # Normalizar imágenes
-    validation_split=0.15   # Separar 15% para validación
+    rescale=1./255,
+    rotation_range=40,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest',
+    validation_split=0.15  # Mantener el 15% para validación
 )
 
-# Convertir DirectoryIterator a tf.data.Dataset
+# Función para convertir DirectoryIterator a tf.data.Dataset
 def convertir_a_dataset(directory_iterator):
     def generator():
         for batch in directory_iterator:
@@ -93,36 +103,31 @@ ds_validacion_taco = convertir_a_dataset(validacion_taco)
 entrenamiento_combined = ds_entrenamiento_trashnet.concatenate(ds_entrenamiento_garbage).concatenate(ds_entrenamiento_taco)
 validacion_combined = ds_validacion_trashnet.concatenate(ds_validacion_garbage).concatenate(ds_validacion_taco)
 
-# Definir el modelo CNN
-modeloCNN = tf.keras.models.Sequential([
-    tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(TAMANO_IMG, TAMANO_IMG, 3)),
-    tf.keras.layers.MaxPooling2D(2, 2),
-    tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
-    tf.keras.layers.MaxPooling2D(2, 2),
-    tf.keras.layers.Conv2D(128, (3, 3), activation='relu'),
-    tf.keras.layers.MaxPooling2D(2, 2),
-    tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(256, activation='relu'),
-    tf.keras.layers.Dropout(0.5),
-    tf.keras.layers.Dense(6, activation='softmax')  # 6 clases: glass, paper, cardboard, plastic, metal, trash
-])
+# Usar ResNet50 preentrenado y construir el modelo
+base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(TAMANO_IMG, TAMANO_IMG, 3))
+base_model.trainable = False  # Congelar las capas del modelo preentrenado
+
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = Dense(256, activation='relu')(x)
+x = Dropout(0.5)(x)
+predictions = Dense(6, activation='softmax')(x)
+
+modeloCNN = Model(inputs=base_model.input, outputs=predictions)
 
 # Compilar el modelo
-modeloCNN.compile(optimizer='adam',
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy'])
+modeloCNN.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-# Callbacks: Guardar el modelo y parar si no mejora
-tensorboard = TensorBoard(log_dir='logs/cnn_trashnet')
-early_stopping = EarlyStopping(monitor='val_loss', patience=5)
-checkpointer = ModelCheckpoint(filepath='modelo_trashnet.h5', save_best_only=True, monitor='val_loss')
+# Callbacks: EarlyStopping y ModelCheckpoint
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, mode='min')
+checkpointer = ModelCheckpoint(filepath='modelo_mejorado.h5', save_best_only=True, monitor='val_loss', mode='min')
 
-# Entrenar el modelo con los datasets combinados
+# Entrenar el modelo
 historial = modeloCNN.fit(
     entrenamiento_combined,
     validation_data=validacion_combined,
     epochs=EPOCHS,
-    callbacks=[tensorboard, early_stopping, checkpointer],
+    callbacks=[early_stopping, checkpointer],
     steps_per_epoch=len(entrenamiento_trashnet),
     validation_steps=len(validacion_trashnet)
 )
@@ -138,7 +143,7 @@ def visualizar_resultados(historial):
     loss = historial.history['loss']
     val_loss = historial.history['val_loss']
 
-    epochs_range = range(EPOCHS)
+    epochs_range = range(len(acc))
 
     plt.figure(figsize=(12, 6))
 
