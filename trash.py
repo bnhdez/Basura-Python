@@ -1,9 +1,17 @@
 import os
 import cv2
+from dotenv import load_dotenv  # Importar dotenv para cargar las variables de entorno
 from inference_sdk import InferenceHTTPClient
 #CLASIFICADOR DE BASURA
-# Cargar la API Key directamente
-api_key = "zbnsnKkZjuLCzZhPrRAc"  # Asegúrate de que esta es tu API Key válida
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
+
+# Obtener la API Key desde la variable de entorno
+api_key = os.getenv("PRIVATE_API_KEY")
+
+# Verificar si la API Key se cargó correctamente
+if api_key is None:
+    raise ValueError("La API Key no se encontró. Asegúrate de que el archivo .env contiene PRIVATE_API_KEY correctamente.")
 
 # Inicializar el cliente de inferencia con Roboflow
 CLIENT = InferenceHTTPClient(
@@ -34,7 +42,7 @@ def draw_classification(frame, predictions):
         cv2.putText(frame, label, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
 # Capturar la cámara en tiempo real desde el índice 2
-cap = cv2.VideoCapture(2, cv2.CAP_DSHOW)  # Asegúrate de usar DirectShow en Windows para mayor compatibilidad
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Asegúrate de usar DirectShow en Windows para mayor compatibilidad
 
 if not cap.isOpened():
     print("No se pudo abrir la cámara.")

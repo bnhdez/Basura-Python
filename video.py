@@ -47,7 +47,7 @@ def draw_detections(frame, detections):
         cv2.putText(frame, f'{class_name} ({confidence*100:.1f}%)', (start_point[0], start_point[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
 # Inicializar la cámara
-cap = cv2.VideoCapture(2, cv2.CAP_DSHOW)  # Fuerza el uso de DirectShow en lugar de MSMF
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Fuerza el uso de DirectShow en lugar de MSMF
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 #cap.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)  # Ajusta el brillo
