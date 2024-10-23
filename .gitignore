@@ -2,7 +2,7 @@ dataset-original/
 Garbage classification/
 TACO/
 env/
-logs/cnn_tashnet/
+logs/cnn_trashnet/
 yolov5/
 Modelos_trained/
 .env
