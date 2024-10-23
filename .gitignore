@@ -2,6 +2,8 @@ dataset-original/
 Garbage classification/
 TACO/
 env/
-logs/
+logs/cnn_tashnet/
+yolov5/
+Modelos_trained/
 .env
 temp_frame.jpg
