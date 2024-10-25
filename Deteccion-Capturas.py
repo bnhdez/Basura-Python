@@ -11,29 +11,31 @@ from dotenv import load_dotenv
 import pyodbc
 from datetime import datetime
 
-# Cargar las variables de entorno desde el archivo .env
+# Cargar las variables de entorno desde el archivo .env (en este archivo debe estar la API key)
 load_dotenv()
 
 # Obtener la API Key desde el archivo .env
 api_key = os.getenv("PRIVATE_API_KEY")
 
+# Verificación si la API Key se cargó correctamente, si no, genera un error
 if api_key is None:
     raise ValueError("La API Key no se encontró. Asegúrate de que el archivo .env contiene PRIVATE_API_KEY correctamente.")
 
-# URL del modelo en Roboflow
+# URL del modelo de Roboflow
 api_url = "https://detect.roboflow.com/10k/1"
 
-# Diccionario para contar los tipos de residuos
+# Diccionario para contar los tipos de residuos detectados por el sistema
 residuo_contador = {'plástico': 0, 'vidrio': 0, 'metal': 0, 'papel': 0, 'otros': 0}
 
-# Conexión a SQL Server
+# Conexión a SQL Server usando la instancia LocalDB
+# Usamos el controlador ODBC Driver 17 for SQL Server y nos conectamos a la base de datos WasteSortingDB
 conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};'
-                      'SERVER=localhost;'
-                      'DATABASE=WasteSortingDB;'
-                      'Trusted_Connection=yes;')
+                      'SERVER=(LocalDB)\MSSQLLocalDB;'  # Nombre del servidor o instancia SQL (local)
+                      'DATABASE=WasteSortingDB;'         # Nombre de la base de datos
+                      'Trusted_Connection=yes;')         # Autenticación de Windows
 cursor = conn.cursor()
 
-# Crear tabla en SQL Server si no existe
+# Crear la tabla en SQL Server si no existe
 cursor.execute('''
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='waste_stats' AND xtype='U')
 CREATE TABLE waste_stats (
@@ -46,61 +48,77 @@ CREATE TABLE waste_stats (
     timestamp DATETIME DEFAULT GETDATE()
 )
 ''')
-conn.commit()
+conn.commit()  # Confirmar la ejecución de la creación de la tabla
 
+# Clase principal de la interfaz gráfica
 class WasteSortingGUI:
     def __init__(self, window):
         self.window = window
-        self.window.title("Sistema de clasificación de residuos")
+        self.window.title("Sistema de clasificación de residuos")  # Título de la ventana
 
+        # Dimensiones de la ventana, se ajusta a la resolución de pantalla
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
         self.window.geometry(f"{screen_width}x{screen_height}")
-        self.window.configure(bg='#ffffff')
+        self.window.configure(bg='#ffffff')  # Color de fondo de la ventana
 
+        # Crear un frame superior para el encabezado
         header_frame = Frame(self.window, bg='#a0e75a', height=80)
         header_frame.pack(fill="x")
 
+        # Cargar imagen del logo y ajustar su tamaño
         img = Image.open("recycle_icon.png")
         img_resized = img.resize((50, 50), Image.LANCZOS)
         logo = ImageTk.PhotoImage(img_resized)
 
+        # Mostrar el logo en el encabezado
         logo_label = Label(header_frame, image=logo, bg='#a0e75a')
         logo_label.image = logo
         logo_label.pack(side="left", padx=10)
 
+        # Título en el encabezado
         title_label = Label(header_frame, text="Sistema de clasificación de residuos", font=("Arial", 20, "bold"), bg='#a0e75a', fg="black")
         title_label.pack(side="left", padx=20)
 
+        # Frame principal para contener el contenido
         self.main_frame = Frame(self.window, bg='#ffffff')
         self.main_frame.pack(fill="both", expand=True, pady=10)
 
+        # Frame para la cámara
         camera_frame_container = Frame(self.main_frame, bg='#ffffff')
         camera_frame_container.pack(pady=10)
 
+        # Cuadro donde se mostrará el video de la cámara
         self.camera_frame = Label(camera_frame_container, bg='#000')
         self.camera_frame.pack()
 
+        # Botón para enviar la imagen a Roboflow
         self.send_button = Button(self.main_frame, text="ENVIAR SOLICITUD", command=self.send_request,
                                   font=("Arial", 16, "bold"), bg="#b3f35a", fg="black", padx=20, pady=10, bd=0, relief="flat")
         self.send_button.pack(pady=5)
 
+        # Botón para ver estadísticas de residuos clasificados
         self.stats_button = Button(self.main_frame, text="VER ESTADÍSTICAS", command=self.show_stats,
                                    font=("Arial", 16, "bold"), bg="#b3f35a", fg="black", padx=20, pady=10, bd=0, relief="flat")
         self.stats_button.pack(pady=5)
 
+        # Botón para ver el historial de clasificaciones
         self.history_button = Button(self.main_frame, text="HISTORICO", command=self.show_history,
                                      font=("Arial", 16, "bold"), bg="#b3f35a", fg="black", padx=20, pady=10, bd=0, relief="flat")
         self.history_button.pack(pady=5)
 
-        self.cap = cv2.VideoCapture(2, cv2.CAP_DSHOW)
+        # Inicializa la cámara (índice 2, puede variar según la configuración)
+        self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
+        # Para detectar cuando se cierra la ventana
         self.window_closed = False
-        self.update_frame()
+        self.update_frame()  # Actualiza el video en tiempo real
 
+    # Método para actualizar el video de la cámara
     def update_frame(self):
-        ret, frame = self.cap.read()
+        ret, frame = self.cap.read()  # Leer frame de la cámara
         if ret:
+            # Convertir el frame a RGB y mostrarlo en la interfaz
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             imgtk = ImageTk.PhotoImage(image=img)
@@ -108,29 +126,32 @@ class WasteSortingGUI:
             self.camera_frame.configure(image=imgtk)
 
         if not self.window_closed:
-            self.window.after(30, self.update_frame)
+            self.window.after(30, self.update_frame)  # Actualizar cada 30ms
 
+    # Método para enviar imágenes a Roboflow y clasificar los residuos
     def send_request(self):
         self.captures = []
         self.predictions = []
         self.capture_images = []
 
+        # Capturar tres imágenes de la cámara y hacer la clasificación
         for i in range(3):
             ret, frame = self.cap.read()
             if ret:
-                result = self.infer_image_from_roboflow(frame)
+                result = self.infer_image_from_roboflow(frame)  # Enviar la imagen a Roboflow para análisis
                 if result and 'predictions' in result and isinstance(result['predictions'], list):
                     pred_classes = []
                     for pred in result['predictions']:
                         mapped_class = self.map_class_name(pred['class'])
                         pred_classes.append(f"{mapped_class} ({pred['confidence'] * 100:.1f}%)")
-                        residuo_contador[mapped_class] += 1
+                        residuo_contador[mapped_class] += 1  # Contar el tipo de residuo detectado
                     self.predictions.append(", ".join(pred_classes))
                     frame = self.draw_boxes_on_frame(frame, result['predictions'])
                 else:
                     self.predictions.append("No se detectaron objetos.")
                     residuo_contador['otros'] += 1
 
+                # Mostrar la imagen redimensionada con los objetos detectados
                 frame_resized = cv2.resize(frame, (200, 150))
                 frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(frame_rgb)
@@ -138,9 +159,10 @@ class WasteSortingGUI:
                 self.captures.append(imgtk)
                 self.capture_images.append(img)
 
-        self.save_to_database()
-        self.show_results_window()
+        self.save_to_database()  # Guardar los resultados en la base de datos
+        self.show_results_window()  # Mostrar la ventana de resultados
 
+    # Método para guardar los resultados en SQL Server
     def save_to_database(self):
         cursor.execute('''
             INSERT INTO waste_stats (plastic_count, glass_count, metal_count, paper_count, others_count)
@@ -152,8 +174,9 @@ class WasteSortingGUI:
             residuo_contador['papel'],
             residuo_contador['otros']
         ))
-        conn.commit()
+        conn.commit()  # Confirmar la inserción de datos
 
+    # Método para enviar la imagen a la API de Roboflow
     def infer_image_from_roboflow(self, image):
         _, img_encoded = cv2.imencode('.jpg', image)
         img_bytes = img_encoded.tobytes()
@@ -161,10 +184,12 @@ class WasteSortingGUI:
         response = requests.post(f"{api_url}?api_key={api_key}", files=files)
         return response.json() if response.status_code == 200 else None
 
+    # Mapear el nombre de la clase de la API a nombres más entendibles
     def map_class_name(self, class_name):
         class_mapping = {'bottle': 'plástico', 'can': 'metal', 'glass': 'vidrio', 'paper': 'papel'}
         return class_mapping.get(class_name, 'otros')
 
+    # Dibujar cajas alrededor de los objetos detectados en el frame
     def draw_boxes_on_frame(self, frame, predictions):
         for pred in predictions:
             if 'x' in pred and 'y' in pred and 'width' in pred and 'height' in pred:
@@ -175,10 +200,51 @@ class WasteSortingGUI:
                 cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
         return frame
 
+    # Método para mostrar estadísticas
+    def show_stats(self):
+        stats_window = Toplevel(self.window)
+        stats_window.title("Estadísticas de Clasificación")
+        stats_window.geometry("900x650")
+        stats_window.configure(bg='#ffffff')
+
+        # Encabezado de la ventana
+        header_frame = Frame(stats_window, bg='#a0e75a', height=80)
+        header_frame.pack(fill="x")
+        title_label = Label(header_frame, text="ESTADÍSTICAS", font=("Arial", 20, "bold"), bg='#a0e75a', fg="black")
+        title_label.pack(pady=10)
+
+        # Mostrar gráfico con estadísticas
+        fig, ax = plt.subplots(figsize=(6, 4))
+
+        # Definir residuos y cantidades
+        residuos = list(residuo_contador.keys())
+        cantidades = list(residuo_contador.values())
+
+        # Crear el gráfico de barras
+        ax.bar(residuos, cantidades, color=['#4CAF50', '#FF5722', '#2196F3', '#FFC107', '#9E9E9E'])
+
+        for i, v in enumerate(cantidades):
+            ax.text(i, v + 10, str(v), ha='center', fontweight='bold')
+
+        ax.set_title('Residuos capturados')
+        ax.set_ylabel('Unidades')
+
+        # Mostrar gráfico en la ventana
+        canvas = Frame(stats_window)
+        canvas.pack()
+        plt_canvas = FigureCanvasTkAgg(fig, master=canvas)
+        plt_canvas.draw()
+        plt_canvas.get_tk_widget().pack()
+
+        # Botón para cerrar la ventana de estadísticas
+        Button(stats_window, text="Cerrar", font=("Arial", 12), bg="#b3f35a", fg="black", bd=0, command=stats_window.destroy).pack(pady=20)
+
+    # Método para mostrar historial de clasificación
     def show_history(self):
         self.window.withdraw()
         self.show_history_window()
 
+    # Mostrar la ventana del historial
     def show_history_window(self):
         history_window = Toplevel(self.window)
         history_window.title("Histórico")
@@ -210,10 +276,12 @@ class WasteSortingGUI:
 
         Button(history_window, text="REGRESAR", font=("Arial", 12), bg="#b3f35a", fg="black", bd=0, command=lambda: self.back_to_main(history_window)).pack(pady=20)
 
+    # Método para regresar a la ventana principal desde el historial
     def back_to_main(self, history_window):
         history_window.destroy()
         self.window.deiconify()
 
+    # Método para buscar el historial entre fechas dadas
     def search_history(self, from_date, to_date, history_window):
         for widget in self.table_frame.winfo_children():
             widget.destroy()
@@ -256,6 +324,7 @@ class WasteSortingGUI:
             date_label = Label(self.table_frame, text=row[-1].strftime('%Y-%m-%d %H:%M'), font=("Arial", 12), bg='#ffffff', fg="black", relief="solid", bd=1, width=20)
             date_label.grid(row=row_num, column=5)
 
+    # Método para mostrar los resultados de la clasificación
     def show_results_window(self):
         results_window = Toplevel(self.window)
         results_window.title("Resultados de Clasificación")
@@ -286,11 +355,13 @@ class WasteSortingGUI:
 
         Button(results_window, text="DESCARGAR TODO", font=("Arial", 12), bg="#b3f35a", fg="black", bd=0, command=self.download_all).pack(pady=20)
 
+    # Método para descargar una imagen individual
     def download_image(self, index):
         file_path = filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=[("JPEG files", "*.jpg"), ("All files", "*.*")])
         if file_path:
             self.capture_images[index].save(file_path)
 
+    # Método para descargar todas las imágenes
     def download_all(self):
         directory = filedialog.askdirectory()
         if directory:
@@ -298,47 +369,17 @@ class WasteSortingGUI:
                 file_path = os.path.join(directory, f"captura_{i+1}.jpg")
                 img.save(file_path)
 
-    def show_stats(self):
-        stats_window = Toplevel(self.window)
-        stats_window.title("Estadísticas")
-        stats_window.geometry("900x650")
-        stats_window.configure(bg='#ffffff')
-
-        header_frame = Frame(stats_window, bg='#a0e75a', height=80)
-        header_frame.pack(fill="x")
-        title_label = Label(header_frame, text="ESTADÍSTICAS", font=("Arial", 20, "bold"), bg='#a0e75a', fg="black")
-        title_label.pack(pady=10)
-
-        fig, ax = plt.subplots(figsize=(6, 4))
-
-        residuos = list(residuo_contador.keys())
-        cantidades = list(residuo_contador.values())
-
-        ax.bar(residuos, cantidades, color=['#4CAF50', '#FF5722', '#2196F3', '#FFC107', '#9E9E9E'])
-
-        for i, v in enumerate(cantidades):
-            ax.text(i, v + 10, str(v), ha='center', fontweight='bold')
-
-        ax.set_title('Residuos capturados')
-        ax.set_ylabel('Unidades')
-
-        canvas = Frame(stats_window)
-        canvas.pack()
-        plt_canvas = FigureCanvasTkAgg(fig, master=canvas)
-        plt_canvas.draw()
-        plt_canvas.get_tk_widget().pack()
-
-        Button(stats_window, text="REGRESAR", font=("Arial", 12), bg="#b3f35a", fg="black", bd=0, command=stats_window.destroy).pack(pady=20)
-
+    # Método para cerrar la ventana y liberar la cámara y conexión a la base de datos
     def on_closing(self):
         self.window_closed = True
-        self.cap.release()
-        conn.close()
-        self.window.destroy()
+        self.cap.release()  # Liberar la cámara
+        conn.close()  # Cerrar la conexión a la base de datos
+        self.window.destroy()  # Cerrar la ventana
 
 # Crear la ventana principal
 root = tk.Tk()
 app = WasteSortingGUI(root)
 
+# Ejecutar la función cuando se cierra la ventana
 root.protocol("WM_DELETE_WINDOW", app.on_closing)
 root.mainloop()
